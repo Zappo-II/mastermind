@@ -3,12 +3,12 @@ BINARY    := mastermind
 CMD       := ./cmd/mastermind
 CONFIGS   := -level configs/default-level.yaml -palette configs/default-palette.yaml
 
-.PHONY: help build run clean vet lint test cross
+.PHONY: help build run clean fmt vet lint test cross
 
 help: ## Show available targets
 	@grep -E '^[a-z]+:.*##' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
 
-build: vet test ## Vet, test, and compile
+build: fmt vet test ## Format, vet, test, and compile
 	@mkdir -p $(BIN)
 	go build -o $(BIN)/$(BINARY) $(CMD)
 
@@ -17,6 +17,9 @@ run: build ## Build and run with default configs
 
 test: ## Run all tests
 	go test ./...
+
+fmt: ## Format and simplify code
+	gofmt -s -w .
 
 vet: ## Run go vet
 	go vet ./...

@@ -72,6 +72,21 @@ func main() {
 	}
 }
 
+// inputAction signals to the main loop what to do after a key handler runs.
+type inputAction int
+
+const (
+	actionContinue inputAction = iota // re-draw and read next key
+	actionSubmit                      // return the guess
+	actionAbort                       // return nil (quit or lost)
+)
+
+// inputState bundles the mutable state that key handlers read/write.
+type inputState struct {
+	guess        []int
+	pendingDigit int
+}
+
 func inputPrompt(guess []int, pendingDigit int, codeLength int, multiDigit bool, hintAvailable bool) string {
 	if len(guess) >= codeLength {
 		return "Enter to confirm, Bksp to undo: "
@@ -86,10 +101,12 @@ func inputPrompt(guess []int, pendingDigit int, codeLength int, multiDigit bool,
 }
 
 func collectGuess(state *model.GameState, g *game.Game, maxWidth int) []int {
-	guess := make([]int, 0, state.Level.CodeLength)
+	is := &inputState{
+		guess:        make([]int, 0, state.Level.CodeLength),
+		pendingDigit: -1,
+	}
 	maxColors := state.Level.MaxColors
 	multiDigit := maxColors >= 10
-	pendingDigit := -1
 
 	for {
 		hintAvailable := g.HintAvailable()
@@ -102,146 +119,157 @@ func collectGuess(state *model.GameState, g *game.Game, maxWidth int) []int {
 				}
 			}
 		}
-		prompt := inputPrompt(guess, pendingDigit, state.Level.CodeLength, multiDigit, hintAvailable)
-		drawGameWithGuess(state, guess, maxWidth, prompt)
+		prompt := inputPrompt(is.guess, is.pendingDigit, state.Level.CodeLength, multiDigit, hintAvailable)
+		drawGameWithGuess(state, is.guess, maxWidth, prompt)
 
 		b, err := ui.ReadByte()
 		if err != nil {
 			return nil
 		}
 
-		// Quit
-		if b == 'q' {
+		var act inputAction
+		switch {
+		case b == 'q':
 			ui.DisableRawMode()
 			fmt.Print("\r\nQuitting...\r\n")
 			os.Exit(0)
+		case b == '?':
+			act = handleHelp(is)
+		case b == 'h':
+			act, state = handleHint(is, state, g)
+		case b == 127 || b == 8:
+			act = handleBackspace(is)
+		case b == '\r' || b == '\n':
+			act = handleEnter(is, maxColors, state.Level.CodeLength)
+		case b == ' ':
+			act = handleSpace(is, maxColors, state.Level.CodeLength)
+		case b >= '0' && b <= '9':
+			act = handleDigit(is, b, maxColors, state.Level.CodeLength, multiDigit)
+		default:
+			act = actionContinue
 		}
 
-		// Help
-		if b == '?' {
-			fmt.Print("\r\n")
-			fmt.Print(ui.RenderHelp())
-			fmt.Print("Press any key to continue...")
-			_, _ = ui.ReadByte()
-			pendingDigit = -1
-			continue
-		}
-
-		// Hint
-		if b == 'h' {
-			if !state.Level.Hint.Enabled {
-				fmt.Print("\r\nHints are disabled. Press any key...")
-				_, _ = ui.ReadByte()
-				continue
-			}
-			if !g.HintAvailable() {
-				fmt.Print("\r\nNo more hints available. Press any key...")
-				_, _ = ui.ReadByte()
-				continue
-			}
-			nextCost := g.HintCost()
-			if nextCost > 0 && state.Level.MaxTurns > 0 {
-				turnsLeft := state.Level.MaxTurns - g.State().CurrentTurn
-				if nextCost > turnsLeft {
-					fmt.Printf("\r\nHint would cost %d turns, only %d left. Press any key...", nextCost, turnsLeft)
-					_, _ = ui.ReadByte()
-					continue
-				}
-			}
-			if nextCost > 0 {
-				fmt.Printf("\r\nHint costs %d turn(s). Enter to confirm, any other key to cancel...", nextCost)
-				cb, _ := ui.ReadByte()
-				if cb != '\r' && cb != '\n' {
-					continue
-				}
-			}
-			hd := g.GetHint()
-			if hd == nil {
-				continue
-			}
-			hd.Cost = nextCost
-			g.ApplyHint(hd)
-			state = g.State()
-			if state.Lost {
-				return nil
-			}
-			pendingDigit = -1
-			continue
-		}
-
-		// Backspace / DEL
-		if b == 127 || b == 8 {
-			if pendingDigit >= 0 {
-				pendingDigit = -1
-			} else if len(guess) > 0 {
-				guess = guess[:len(guess)-1]
-			}
-			continue
-		}
-
-		// Enter: confirm pending digit, or submit complete row
-		if b == '\r' || b == '\n' {
-			if pendingDigit >= 0 {
-				if pendingDigit >= 1 && pendingDigit <= maxColors && len(guess) < state.Level.CodeLength {
-					guess = append(guess, pendingDigit)
-				}
-				pendingDigit = -1
-				continue
-			}
-			if len(guess) >= state.Level.CodeLength {
-				return guess
-			}
-			continue
-		}
-
-		// Space: confirm pending digit only (does not confirm row)
-		if b == ' ' {
-			if pendingDigit >= 0 {
-				if pendingDigit >= 1 && pendingDigit <= maxColors && len(guess) < state.Level.CodeLength {
-					guess = append(guess, pendingDigit)
-				}
-				pendingDigit = -1
-			}
-			continue
-		}
-
-		// Digit input (never auto-confirms row — Enter always required)
-		if b >= '0' && b <= '9' {
-			if len(guess) >= state.Level.CodeLength {
-				continue
-			}
-			d := int(b - '0')
-
-			if multiDigit {
-				if pendingDigit >= 0 {
-					// Second digit: form two-digit number
-					twoDigit := pendingDigit*10 + d
-					if twoDigit >= 1 && twoDigit <= maxColors {
-						guess = append(guess, twoDigit)
-						pendingDigit = -1
-					} else {
-						// Invalid two-digit: treat second digit as new first digit
-						if d >= 1 && d <= maxColors && d*10 > maxColors {
-							guess = append(guess, d)
-							pendingDigit = -1
-						} else {
-							pendingDigit = d
-						}
-					}
-				} else if d >= 1 && d <= maxColors && d*10 > maxColors {
-					// Unambiguous single digit — auto-accept
-					guess = append(guess, d)
-				} else {
-					pendingDigit = d
-				}
-			} else {
-				if d >= 1 && d <= maxColors {
-					guess = append(guess, d)
-				}
-			}
-			continue
+		switch act {
+		case actionSubmit:
+			return is.guess
+		case actionAbort:
+			return nil
 		}
 	}
+}
+
+func handleHelp(is *inputState) inputAction {
+	fmt.Print("\r\n")
+	fmt.Print(ui.RenderHelp())
+	fmt.Print("Press any key to continue...")
+	_, _ = ui.ReadByte()
+	is.pendingDigit = -1
+	return actionContinue
+}
+
+func handleHint(is *inputState, state *model.GameState, g *game.Game) (inputAction, *model.GameState) {
+	if !state.Level.Hint.Enabled {
+		fmt.Print("\r\nHints are disabled. Press any key...")
+		_, _ = ui.ReadByte()
+		return actionContinue, state
+	}
+	if !g.HintAvailable() {
+		fmt.Print("\r\nNo more hints available. Press any key...")
+		_, _ = ui.ReadByte()
+		return actionContinue, state
+	}
+	nextCost := g.HintCost()
+	if nextCost > 0 && state.Level.MaxTurns > 0 {
+		turnsLeft := state.Level.MaxTurns - g.State().CurrentTurn
+		if nextCost > turnsLeft {
+			fmt.Printf("\r\nHint would cost %d turns, only %d left. Press any key...", nextCost, turnsLeft)
+			_, _ = ui.ReadByte()
+			return actionContinue, state
+		}
+	}
+	if nextCost > 0 {
+		fmt.Printf("\r\nHint costs %d turn(s). Enter to confirm, any other key to cancel...", nextCost)
+		cb, _ := ui.ReadByte()
+		if cb != '\r' && cb != '\n' {
+			return actionContinue, state
+		}
+	}
+	hd := g.GetHint()
+	if hd == nil {
+		return actionContinue, state
+	}
+	hd.Cost = nextCost
+	g.ApplyHint(hd)
+	state = g.State()
+	if state.Lost {
+		return actionAbort, state
+	}
+	is.pendingDigit = -1
+	return actionContinue, state
+}
+
+func handleBackspace(is *inputState) inputAction {
+	if is.pendingDigit >= 0 {
+		is.pendingDigit = -1
+	} else if len(is.guess) > 0 {
+		is.guess = is.guess[:len(is.guess)-1]
+	}
+	return actionContinue
+}
+
+func handleEnter(is *inputState, maxColors int, codeLength int) inputAction {
+	if is.pendingDigit >= 0 {
+		if is.pendingDigit >= 1 && is.pendingDigit <= maxColors && len(is.guess) < codeLength {
+			is.guess = append(is.guess, is.pendingDigit)
+		}
+		is.pendingDigit = -1
+		return actionContinue
+	}
+	if len(is.guess) >= codeLength {
+		return actionSubmit
+	}
+	return actionContinue
+}
+
+func handleSpace(is *inputState, maxColors int, codeLength int) inputAction {
+	if is.pendingDigit >= 0 {
+		if is.pendingDigit >= 1 && is.pendingDigit <= maxColors && len(is.guess) < codeLength {
+			is.guess = append(is.guess, is.pendingDigit)
+		}
+		is.pendingDigit = -1
+	}
+	return actionContinue
+}
+
+func handleDigit(is *inputState, b byte, maxColors int, codeLength int, multiDigit bool) inputAction {
+	if len(is.guess) >= codeLength {
+		return actionContinue
+	}
+	d := int(b - '0')
+
+	if multiDigit {
+		if is.pendingDigit >= 0 {
+			twoDigit := is.pendingDigit*10 + d
+			if twoDigit >= 1 && twoDigit <= maxColors {
+				is.guess = append(is.guess, twoDigit)
+				is.pendingDigit = -1
+			} else if d >= 1 && d <= maxColors && d*10 > maxColors {
+				is.guess = append(is.guess, d)
+				is.pendingDigit = -1
+			} else {
+				is.pendingDigit = d
+			}
+		} else if d >= 1 && d <= maxColors && d*10 > maxColors {
+			is.guess = append(is.guess, d)
+		} else {
+			is.pendingDigit = d
+		}
+	} else {
+		if d >= 1 && d <= maxColors {
+			is.guess = append(is.guess, d)
+		}
+	}
+	return actionContinue
 }
 
 func renderWinScreen(state *model.GameState, maxWidth int) {

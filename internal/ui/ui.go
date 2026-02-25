@@ -161,13 +161,9 @@ func RenderColorPalette(state *model.GameState, maxWidth int) string {
 	legendPad := centerPad(level.MaxColors, maxWidth)
 	b.WriteString(strings.Repeat(" ", legendPad))
 	for i := 1; i <= level.MaxColors; i++ {
-		c := palette.GetColor(i)
-		if c == nil {
-			continue
+		if s := renderColorNum(palette, i, ""); s != "" {
+			b.WriteString(s)
 		}
-		bgR, bgG, bgB := HexToRGB(c.RGB)
-		fgR, fgG, fgB := HexToRGB(c.FG)
-		b.WriteString(ColorBlock(bgR, bgG, bgB, fgR, fgG, fgB, fmt.Sprintf(" %02d ", i)))
 	}
 	b.WriteString("\n")
 	b.WriteString(divider(maxWidth))
@@ -184,14 +180,7 @@ func RenderSecretShield(state *model.GameState, maxWidth int) string {
 	if state.Won || state.Lost {
 		// Reveal secret code as colored blocks
 		for _, colorNum := range state.SecretCode {
-			c := palette.GetColor(colorNum)
-			if c != nil {
-				bgR, bgG, bgB := HexToRGB(c.RGB)
-				fgR, fgG, fgB := HexToRGB(c.FG)
-				b.WriteString(ColorBlock(bgR, bgG, bgB, fgR, fgG, fgB, fmt.Sprintf(" %02d ", colorNum)))
-			} else {
-				fmt.Fprintf(&b, " %02d ", colorNum)
-			}
+			b.WriteString(renderColorNum(palette, colorNum, fmt.Sprintf(" %02d ", colorNum)))
 		}
 	} else {
 		// Hidden shield
@@ -202,6 +191,110 @@ func RenderSecretShield(state *model.GameState, maxWidth int) string {
 	b.WriteString("\n")
 	b.WriteString(strings.Repeat("\u2500", maxWidth) + "\n")
 	return b.String()
+}
+
+// renderColorNum renders a color number as a colored block using the palette.
+// Returns fallback if the color is not found.
+func renderColorNum(palette model.PaletteConfig, colorNum int, fallback string) string {
+	c := palette.GetColor(colorNum)
+	if c == nil {
+		return fallback
+	}
+	bgR, bgG, bgB := HexToRGB(c.RGB)
+	fgR, fgG, fgB := HexToRGB(c.FG)
+	return ColorBlock(bgR, bgG, bgB, fgR, fgG, fgB, fmt.Sprintf(" %02d ", colorNum))
+}
+
+// feedbackSymbol renders a feedback peg symbol with the given palette color.
+func feedbackSymbol(palette model.PaletteConfig, colorNum int, symbol string) string {
+	c := palette.GetColor(colorNum)
+	if c == nil {
+		return ""
+	}
+	bgR, bgG, bgB := HexToRGB(c.RGB)
+	fgR, fgG, fgB := HexToRGB(c.FG)
+	return ColorBlock(bgR, bgG, bgB, fgR, fgG, fgB, symbol)
+}
+
+func renderHintRow(b *strings.Builder, turn model.Turn, palette model.PaletteConfig, codeLength int, row int, turns []model.Turn) int {
+	if turn.HintData != nil {
+		onlyIdx := 0
+		for i := 0; i < codeLength; i++ {
+			if i < len(turn.HintData.Slots) && turn.HintData.Slots[i] > 0 {
+				b.WriteString(renderColorNum(palette, turn.HintData.Slots[i], "[  ]"))
+			} else if onlyIdx < len(turn.HintData.OnlyColors) {
+				colorNum := turn.HintData.OnlyColors[onlyIdx]
+				b.WriteString(CSI + "2m" + fmt.Sprintf("[%02d]", colorNum) + CSI + "0m")
+				onlyIdx++
+			} else {
+				b.WriteString("[  ]")
+			}
+		}
+		label := fmt.Sprintf("  Hint #%d", turn.HintData.Number)
+		if turn.HintData.Cost > 0 {
+			label += fmt.Sprintf(" Cost %d", turn.HintData.Cost)
+		}
+		b.WriteString(CSI + "2m" + label + CSI + "0m")
+		return row
+	}
+	// Cost-only row — count consecutive cost rows and consolidate
+	costCount := 1
+	for row+1 < len(turns) && turns[row+1].IsHint && turns[row+1].HintData == nil {
+		costCount++
+		row++
+	}
+	rowWidth := codeLength * 4
+	text := fmt.Sprintf(" cost x%d ", costCount)
+	fillWidth := rowWidth - 2 - len(text)
+	left := fillWidth / 2
+	right := fillWidth - left
+	bar := strings.Repeat("\u2500", left) + text + strings.Repeat("\u2500", right)
+	b.WriteString(CSI + "2m" + "[" + bar + "]" + CSI + "0m")
+	return row
+}
+
+func renderGuessRow(b *strings.Builder, turn model.Turn, palette model.PaletteConfig) {
+	for _, colorNum := range turn.Guess {
+		b.WriteString(renderColorNum(palette, colorNum, "    "))
+	}
+	b.WriteString(" ")
+
+	if turn.Feedback.Positions != nil {
+		exactSym := feedbackSymbol(palette, palette.Feedback.Exact.ColorNumber, palette.Feedback.Exact.Symbol)
+		partialSym := feedbackSymbol(palette, palette.Feedback.Partial.ColorNumber, palette.Feedback.Partial.Symbol)
+		emptySym := feedbackSymbol(palette, palette.Feedback.Empty.ColorNumber, palette.Feedback.Empty.Symbol)
+		for _, pos := range turn.Feedback.Positions {
+			switch pos {
+			case model.FeedbackExact:
+				b.WriteString(exactSym)
+			case model.FeedbackPartial:
+				b.WriteString(partialSym)
+			default:
+				b.WriteString(emptySym)
+			}
+		}
+	} else {
+		b.WriteString(strings.Repeat(feedbackSymbol(palette, palette.Feedback.Exact.ColorNumber, palette.Feedback.Exact.Symbol), turn.Feedback.Exact))
+		b.WriteString(strings.Repeat(feedbackSymbol(palette, palette.Feedback.Partial.ColorNumber, palette.Feedback.Partial.Symbol), turn.Feedback.Partial))
+	}
+}
+
+func renderInputRow(b *strings.Builder, currentGuess []int, palette model.PaletteConfig, codeLength int) {
+	for i := 0; i < codeLength; i++ {
+		if i < len(currentGuess) && currentGuess[i] > 0 {
+			b.WriteString(renderColorNum(palette, currentGuess[i], ""))
+		} else if i == len(currentGuess) {
+			b.WriteString("[ _]")
+		} else {
+			b.WriteString("[  ]")
+		}
+	}
+}
+
+func renderEmptyRow(b *strings.Builder, codeLength int) {
+	for i := 0; i < codeLength; i++ {
+		b.WriteString("[  ]")
+	}
 }
 
 func RenderTurnRows(state *model.GameState, currentGuess []int, maxWidth int) string {
@@ -233,141 +326,15 @@ func RenderTurnRows(state *model.GameState, currentGuess []int, maxWidth int) st
 
 		if row < len(state.Turns) {
 			turn := state.Turns[row]
-
 			if turn.IsHint {
-				if turn.HintData != nil {
-					// Hint display row — codeLength slots, same width as guess row
-					onlyIdx := 0
-					for i := 0; i < level.CodeLength; i++ {
-						if i < len(turn.HintData.Slots) && turn.HintData.Slots[i] > 0 {
-							// Positioned: full ColorBlock
-							colorNum := turn.HintData.Slots[i]
-							c := palette.GetColor(colorNum)
-							if c != nil {
-								bgR, bgG, bgB := HexToRGB(c.RGB)
-								fgR, fgG, fgB := HexToRGB(c.FG)
-								b.WriteString(ColorBlock(bgR, bgG, bgB, fgR, fgG, fgB, fmt.Sprintf(" %02d ", colorNum)))
-							} else {
-								b.WriteString("[  ]")
-							}
-						} else if onlyIdx < len(turn.HintData.OnlyColors) {
-							// Unpositioned color: dim bracketed, fills into empty slot
-							colorNum := turn.HintData.OnlyColors[onlyIdx]
-							b.WriteString(CSI + "2m" + fmt.Sprintf("[%02d]", colorNum) + CSI + "0m")
-							onlyIdx++
-						} else {
-							b.WriteString("[  ]")
-						}
-					}
-
-					// Label extends right (like feedback pegs)
-					label := fmt.Sprintf("  Hint #%d", turn.HintData.Number)
-					if turn.HintData.Cost > 0 {
-						label += fmt.Sprintf(" Cost %d", turn.HintData.Cost)
-					}
-					b.WriteString(CSI + "2m" + label + CSI + "0m")
-				} else {
-					// Cost-only row — count consecutive cost rows and consolidate
-					costCount := 1
-					for row+1 < len(state.Turns) && state.Turns[row+1].IsHint && state.Turns[row+1].HintData == nil {
-						costCount++
-						row++
-					}
-					rowWidth := level.CodeLength * 4
-					text := fmt.Sprintf(" cost x%d ", costCount)
-					fillWidth := rowWidth - 2 - len(text)
-					left := fillWidth / 2
-					right := fillWidth - left
-					bar := strings.Repeat("\u2500", left) + text + strings.Repeat("\u2500", right)
-					b.WriteString(CSI + "2m" + "[" + bar + "]" + CSI + "0m")
-				}
+				row = renderHintRow(&b, turn, palette, level.CodeLength, row, state.Turns)
 			} else {
-				exactColor := palette.GetColor(palette.Feedback.Exact.ColorNumber)
-				partialColor := palette.GetColor(palette.Feedback.Partial.ColorNumber)
-
-				if turn.Feedback.Positions != nil {
-					// Ordered feedback: all blocks, then pegs left-to-right
-					for _, colorNum := range turn.Guess {
-						c := palette.GetColor(colorNum)
-						if c != nil {
-							bgR, bgG, bgB := HexToRGB(c.RGB)
-							fgR, fgG, fgB := HexToRGB(c.FG)
-							b.WriteString(ColorBlock(bgR, bgG, bgB, fgR, fgG, fgB, fmt.Sprintf(" %02d ", colorNum)))
-						} else {
-							b.WriteString("    ")
-						}
-					}
-					emptyColor := palette.GetColor(palette.Feedback.Empty.ColorNumber)
-					b.WriteString(" ")
-					for _, pos := range turn.Feedback.Positions {
-						switch pos {
-						case model.FeedbackExact:
-							if exactColor != nil {
-								bgR, bgG, bgB := HexToRGB(exactColor.RGB)
-								fgR, fgG, fgB := HexToRGB(exactColor.FG)
-								b.WriteString(ColorBlock(bgR, bgG, bgB, fgR, fgG, fgB, palette.Feedback.Exact.Symbol))
-							}
-						case model.FeedbackPartial:
-							if partialColor != nil {
-								bgR, bgG, bgB := HexToRGB(partialColor.RGB)
-								fgR, fgG, fgB := HexToRGB(partialColor.FG)
-								b.WriteString(ColorBlock(bgR, bgG, bgB, fgR, fgG, fgB, palette.Feedback.Partial.Symbol))
-							}
-						default:
-							if emptyColor != nil {
-								bgR, bgG, bgB := HexToRGB(emptyColor.RGB)
-								fgR, fgG, fgB := HexToRGB(emptyColor.FG)
-								b.WriteString(ColorBlock(bgR, bgG, bgB, fgR, fgG, fgB, palette.Feedback.Empty.Symbol))
-							}
-						}
-					}
-				} else {
-					// Unordered feedback: aggregated symbols after all guess slots
-					for _, colorNum := range turn.Guess {
-						c := palette.GetColor(colorNum)
-						if c != nil {
-							bgR, bgG, bgB := HexToRGB(c.RGB)
-							fgR, fgG, fgB := HexToRGB(c.FG)
-							b.WriteString(ColorBlock(bgR, bgG, bgB, fgR, fgG, fgB, fmt.Sprintf(" %02d ", colorNum)))
-						} else {
-							b.WriteString("    ")
-						}
-					}
-
-					b.WriteString(" ")
-					if exactColor != nil {
-						bgR, bgG, bgB := HexToRGB(exactColor.RGB)
-						fgR, fgG, fgB := HexToRGB(exactColor.FG)
-						b.WriteString(strings.Repeat(ColorBlock(bgR, bgG, bgB, fgR, fgG, fgB, palette.Feedback.Exact.Symbol), turn.Feedback.Exact))
-					}
-					if partialColor != nil {
-						bgR, bgG, bgB := HexToRGB(partialColor.RGB)
-						fgR, fgG, fgB := HexToRGB(partialColor.FG)
-						b.WriteString(strings.Repeat(ColorBlock(bgR, bgG, bgB, fgR, fgG, fgB, palette.Feedback.Partial.Symbol), turn.Feedback.Partial))
-					}
-				}
+				renderGuessRow(&b, turn, palette)
 			}
 		} else if row == len(state.Turns) {
-			// Current input row
-			for i := 0; i < level.CodeLength; i++ {
-				if i < len(currentGuess) && currentGuess[i] > 0 {
-					c := palette.GetColor(currentGuess[i])
-					if c != nil {
-						bgR, bgG, bgB := HexToRGB(c.RGB)
-						fgR, fgG, fgB := HexToRGB(c.FG)
-						b.WriteString(ColorBlock(bgR, bgG, bgB, fgR, fgG, fgB, fmt.Sprintf(" %02d ", currentGuess[i])))
-					}
-				} else if i == len(currentGuess) {
-					b.WriteString("[ _]")
-				} else {
-					b.WriteString("[  ]")
-				}
-			}
+			renderInputRow(&b, currentGuess, palette, level.CodeLength)
 		} else {
-			// Future empty row
-			for i := 0; i < level.CodeLength; i++ {
-				b.WriteString("[  ]")
-			}
+			renderEmptyRow(&b, level.CodeLength)
 		}
 		b.WriteString("\n")
 	}

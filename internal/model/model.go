@@ -66,7 +66,7 @@ type LevelConfig struct {
 type FeedbackPeg int
 
 const (
-	FeedbackNone    FeedbackPeg = iota
+	FeedbackNone FeedbackPeg = iota
 	FeedbackExact
 	FeedbackPartial
 )
@@ -85,15 +85,15 @@ type Turn struct {
 }
 
 type GameState struct {
-	SecretCode    []int
-	Turns         []Turn
-	CurrentTurn   int
-	Won           bool
-	Lost          bool
-	HintsGiven    int
-	ShuffledCode  []int // shuffled secret for color hint reveal order, initialized on first hint
-	Level         LevelConfig
-	Palette       PaletteConfig
+	SecretCode   []int
+	Turns        []Turn
+	CurrentTurn  int
+	Won          bool
+	Lost         bool
+	HintsGiven   int
+	ShuffledCode []int // shuffled secret for color hint reveal order, initialized on first hint
+	Level        LevelConfig
+	Palette      PaletteConfig
 }
 
 func (f Feedback) String() string {

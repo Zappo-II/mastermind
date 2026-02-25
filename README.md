@@ -34,15 +34,16 @@ This runs the tests, compiles the binary, and starts the game with the default c
 make build
 ```
 
-`make build` automatically runs `go vet` and the test suite first — the build fails if either fails. The binary is written to `bin/mastermind`.
+`make build` automatically runs `gofmt -s`, `go vet`, and the test suite first — the build fails if vet or tests fail. The binary is written to `bin/mastermind`.
 
 All available targets (`make help`):
 
 ```bash
 make help    # show available targets
-make build   # vet, test, then compile to bin/mastermind
+make build   # fmt, vet, test, then compile to bin/mastermind
 make test    # run all tests
 make run     # build + run with default configs
+make fmt     # gofmt -s -w .
 make vet     # go vet ./...
 make lint    # golangci-lint run ./...
 make cross   # cross-compile for macOS and Windows
@@ -288,4 +289,4 @@ mastermind/
 
 ## License
 
-MIT
+MIT — © 2026 Zappo-II

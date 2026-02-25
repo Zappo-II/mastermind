@@ -166,13 +166,13 @@ func TestHintCost(t *testing.T) {
 
 func TestHintAvailable(t *testing.T) {
 	tests := []struct {
-		name       string
-		enabled    bool
-		maxHints   int
-		hintsGiven int
-		codeLength int
+		name        string
+		enabled     bool
+		maxHints    int
+		hintsGiven  int
+		codeLength  int
 		sortByOrder bool
-		want       bool
+		want        bool
 	}{
 		{"disabled", false, 0, 0, 4, false, false},
 		{"maxHints reached", true, 3, 3, 4, false, false},
