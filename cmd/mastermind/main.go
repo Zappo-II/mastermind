@@ -100,6 +100,20 @@ func inputPrompt(guess []int, pendingDigit int, codeLength int, multiDigit bool,
 	return "Color# (? help): "
 }
 
+func hintAffordable(g *game.Game, state *model.GameState) bool {
+	if !g.HintAvailable() {
+		return false
+	}
+	nextCost := g.HintCost()
+	if nextCost > 0 && state.Level.MaxTurns > 0 {
+		turnsLeft := state.Level.MaxTurns - g.State().CurrentTurn
+		if nextCost > turnsLeft {
+			return false
+		}
+	}
+	return true
+}
+
 func collectGuess(state *model.GameState, g *game.Game, maxWidth int) []int {
 	is := &inputState{
 		guess:        make([]int, 0, state.Level.CodeLength),
@@ -109,17 +123,7 @@ func collectGuess(state *model.GameState, g *game.Game, maxWidth int) []int {
 	multiDigit := maxColors >= 10
 
 	for {
-		hintAvailable := g.HintAvailable()
-		if hintAvailable {
-			nextCost := g.HintCost()
-			if nextCost > 0 && state.Level.MaxTurns > 0 {
-				turnsLeft := state.Level.MaxTurns - g.State().CurrentTurn
-				if nextCost > turnsLeft {
-					hintAvailable = false
-				}
-			}
-		}
-		prompt := inputPrompt(is.guess, is.pendingDigit, state.Level.CodeLength, multiDigit, hintAvailable)
+		prompt := inputPrompt(is.guess, is.pendingDigit, state.Level.CodeLength, multiDigit, hintAffordable(g, state))
 		drawGameWithGuess(state, is.guess, maxWidth, prompt)
 
 		b, err := ui.ReadByte()
