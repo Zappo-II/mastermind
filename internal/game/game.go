@@ -220,9 +220,6 @@ func (g *Game) GetHint() *model.HintData {
 
 	n := g.state.HintsGiven
 	codeLen := g.state.Level.CodeLength
-	slots := make([]int, codeLen)
-	var onlyColors []int
-	var text string
 
 	// Initialize shuffled code on first hint (stable random reveal order)
 	if g.state.ShuffledCode == nil {
@@ -232,67 +229,80 @@ func (g *Game) GetHint() *model.HintData {
 			g.state.ShuffledCode[i], g.state.ShuffledCode[j] = g.state.ShuffledCode[j], g.state.ShuffledCode[i]
 		})
 	}
-	shuffled := g.state.ShuffledCode
 
+	var hd *model.HintData
 	if g.state.Level.Hint.SortByOrder {
-		// All positional from start — accumulate all revealed positions
-		if n >= codeLen {
-			return nil
-		}
-		g.state.HintsGiven++
-		for i := 0; i <= n; i++ {
-			slots[i] = g.state.SecretCode[i]
-		}
-		var parts []string
-		for i := 0; i <= n; i++ {
-			parts = append(parts, fmt.Sprintf("Position %d = %d", i+1, g.state.SecretCode[i]))
-		}
-		text = strings.Join(parts, ", ")
+		hd = hintPositional(&g.state, n, codeLen)
 	} else {
-		// Colors first (codeLen hints), then positions (codeLen hints)
-		if n < codeLen {
-			g.state.HintsGiven++
-			onlyColors = make([]int, n+1)
-			copy(onlyColors, shuffled[:n+1])
-			text = "Colors " + intSliceToString(onlyColors) + " are used"
-		} else {
-			offset := n - codeLen
-			if offset >= codeLen {
-				return nil
-			}
-			g.state.HintsGiven++
-			// Populate positioned slots
-			for i := 0; i <= offset; i++ {
-				slots[i] = g.state.SecretCode[i]
-			}
-			// Unpositioned: start with full shuffled set, remove one
-			// instance for each positioned color
-			remaining := make([]int, codeLen)
-			copy(remaining, shuffled)
-			for i := 0; i <= offset; i++ {
-				c := g.state.SecretCode[i]
-				for j, r := range remaining {
-					if r == c {
-						remaining = append(remaining[:j], remaining[j+1:]...)
-						break
-					}
-				}
-			}
-			onlyColors = remaining
-			colorPart := "Colors " + intSliceToString(shuffled) + " are used"
-			var posParts []string
-			for i := 0; i <= offset; i++ {
-				posParts = append(posParts, fmt.Sprintf("Pos %d = %d", i+1, g.state.SecretCode[i]))
-			}
-			text = colorPart + " | " + strings.Join(posParts, ", ")
+		hd = hintColorFirst(&g.state, n, codeLen)
+	}
+	return hd
+}
+
+func hintPositional(state *model.GameState, n int, codeLen int) *model.HintData {
+	if n >= codeLen {
+		return nil
+	}
+	state.HintsGiven++
+	slots := make([]int, codeLen)
+	for i := 0; i <= n; i++ {
+		slots[i] = state.SecretCode[i]
+	}
+	var parts []string
+	for i := 0; i <= n; i++ {
+		parts = append(parts, fmt.Sprintf("Position %d = %d", i+1, state.SecretCode[i]))
+	}
+	return &model.HintData{
+		Number: state.HintsGiven,
+		Text:   strings.Join(parts, ", "),
+		Slots:  slots,
+	}
+}
+
+func hintColorFirst(state *model.GameState, n int, codeLen int) *model.HintData {
+	shuffled := state.ShuffledCode
+	if n < codeLen {
+		state.HintsGiven++
+		onlyColors := make([]int, n+1)
+		copy(onlyColors, shuffled[:n+1])
+		return &model.HintData{
+			Number:     state.HintsGiven,
+			Text:       "Colors " + intSliceToString(onlyColors) + " are used",
+			OnlyColors: onlyColors,
 		}
 	}
-
+	offset := n - codeLen
+	if offset >= codeLen {
+		return nil
+	}
+	state.HintsGiven++
+	slots := make([]int, codeLen)
+	for i := 0; i <= offset; i++ {
+		slots[i] = state.SecretCode[i]
+	}
+	// Unpositioned: start with full shuffled set, remove one
+	// instance for each positioned color
+	remaining := make([]int, codeLen)
+	copy(remaining, shuffled)
+	for i := 0; i <= offset; i++ {
+		c := state.SecretCode[i]
+		for j, r := range remaining {
+			if r == c {
+				remaining = append(remaining[:j], remaining[j+1:]...)
+				break
+			}
+		}
+	}
+	colorPart := "Colors " + intSliceToString(shuffled) + " are used"
+	var posParts []string
+	for i := 0; i <= offset; i++ {
+		posParts = append(posParts, fmt.Sprintf("Pos %d = %d", i+1, state.SecretCode[i]))
+	}
 	return &model.HintData{
-		Number:     g.state.HintsGiven,
-		Text:       text,
+		Number:     state.HintsGiven,
+		Text:       colorPart + " | " + strings.Join(posParts, ", "),
 		Slots:      slots,
-		OnlyColors: onlyColors,
+		OnlyColors: remaining,
 	}
 }
 

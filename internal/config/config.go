@@ -72,35 +72,36 @@ func LoadLevel(path string) (model.LevelConfig, error) {
 		Hint:            file.Hint,
 	}
 
+	if err := validateLevel(&level); err != nil {
+		return model.LevelConfig{}, err
+	}
+	return level, nil
+}
+
+func validateLevel(level *model.LevelConfig) error {
 	if level.CodeLength < 4 || level.CodeLength > 12 {
-		return model.LevelConfig{}, fmt.Errorf("codeLength must be 4-12, got %d", level.CodeLength)
+		return fmt.Errorf("codeLength must be 4-12, got %d", level.CodeLength)
 	}
-
 	if level.MaxColors < 4 || level.MaxColors > 12 {
-		return model.LevelConfig{}, fmt.Errorf("maxColors must be 4-12, got %d", level.MaxColors)
+		return fmt.Errorf("maxColors must be 4-12, got %d", level.MaxColors)
 	}
-
 	if level.MaxTurns < 0 || (level.MaxTurns > 0 && level.MaxTurns < 8) {
-		return model.LevelConfig{}, fmt.Errorf("maxTurns must be 0 or >= 8, got %d", level.MaxTurns)
+		return fmt.Errorf("maxTurns must be 0 or >= 8, got %d", level.MaxTurns)
 	}
-
 	if level.Hint.Cost < 0 || level.Hint.Cost > 9 {
-		return model.LevelConfig{}, fmt.Errorf("hint.cost must be 0-9, got %d", level.Hint.Cost)
+		return fmt.Errorf("hint.cost must be 0-9, got %d", level.Hint.Cost)
 	}
-
 	// Default costFactor to 1 (flat cost) if omitted
 	if level.Hint.CostFactor == 0 {
 		level.Hint.CostFactor = 1
 	}
 	if level.Hint.CostFactor < 1 || level.Hint.CostFactor > 9 {
-		return model.LevelConfig{}, fmt.Errorf("hint.costFactor must be 1-9, got %d", level.Hint.CostFactor)
+		return fmt.Errorf("hint.costFactor must be 1-9, got %d", level.Hint.CostFactor)
 	}
-
 	if level.Hint.MaxHints < 0 {
-		return model.LevelConfig{}, fmt.Errorf("hint.maxHints must be >= 0, got %d", level.Hint.MaxHints)
+		return fmt.Errorf("hint.maxHints must be >= 0, got %d", level.Hint.MaxHints)
 	}
-
-	return level, nil
+	return nil
 }
 
 func Load(palettePath, levelPath string) (Config, error) {
