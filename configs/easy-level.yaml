@@ -1,0 +1,35 @@
+# Easy / kids level — based on the original 1972 Mastermind
+# Fewer colors, no duplicates, ordered feedback to help learn
+
+rules:
+  # Number of color slots in the secret code (4-12)
+  codeLength: 4
+
+  # Number of available colors from the palette (4-12)
+  maxColors: 6
+
+  # Allow duplicate colors in the secret code
+  duplicates: false
+
+  # Maximum number of guesses allowed (0 = unlimited, otherwise >= 8)
+  maxTurns: 12
+
+  # Per-position feedback pegs instead of aggregated counts
+  orderedFeedback: true
+
+hint:
+  # Enable or disable the hint system entirely
+  enabled: true
+
+  # Turns consumed per hint request (0 = free, 1-9)
+  cost: 0
+
+  # Cost multiplier per hint (1 = flat, 2 = doubling: 1,2,4,8...)
+  costFactor: 1
+
+  # Maximum number of hints allowed per game (0 = unlimited)
+  maxHints: 0
+
+  # false = reveal colors first, then positions
+  # true  = reveal positions only, from the start
+  sortByOrder: false

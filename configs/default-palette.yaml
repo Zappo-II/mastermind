@@ -1,0 +1,83 @@
+# Color palette for Mastermind
+# Each color defines:
+#   number  - Unique ID (1-12), used for input and display
+#   name    - Human-readable label
+#   rgb     - Background color in #RRGGBB hex (the "stone" color)
+#   fg      - Foreground/text color in #RRGGBB hex (for numbers on the stone)
+
+colors:
+  - number: 1
+    name: RED
+    rgb: "#FF0000"
+    fg: "#FFFFFF"       # white text on red
+
+  - number: 2
+    name: GREEN
+    rgb: "#00FF00"
+    fg: "#000000"       # black text on green
+
+  - number: 3
+    name: BLUE
+    rgb: "#0000FF"
+    fg: "#FFFFFF"       # white text on blue
+
+  - number: 4
+    name: YELLOW
+    rgb: "#FFFF00"
+    fg: "#000000"       # black text on yellow
+
+  - number: 5
+    name: ORANGE
+    rgb: "#FF8800"
+    fg: "#000000"       # black text on orange
+
+  - number: 6
+    name: PURPLE
+    rgb: "#8800FF"
+    fg: "#FFFFFF"       # white text on purple
+
+  - number: 7
+    name: CYAN
+    rgb: "#00FFFF"
+    fg: "#000000"       # black text on cyan
+
+  - number: 8
+    name: PINK
+    rgb: "#FF00FF"
+    fg: "#FFFFFF"       # white text on pink
+
+  - number: 9
+    name: WHITE
+    rgb: "#FFFFFF"
+    fg: "#000000"       # black text on white
+
+  - number: 10
+    name: BLACK
+    rgb: "#000000"
+    fg: "#FFFFFF"       # white text on black
+
+  - number: 11
+    name: GRAY
+    rgb: "#888888"
+    fg: "#000000"       # black text on gray
+
+  - number: 12
+    name: BROWN
+    rgb: "#8B4513"
+    fg: "#FFFFFF"       # white text on brown
+
+# Feedback peg configuration
+# colorNumber references a palette color above for rendering the peg
+# symbol is the character displayed for each match type
+feedback:
+  exact:
+    colorNumber: 10     # black pegs for exact matches
+    symbol: "\u25CF"    # ● filled circle
+
+  partial:
+    colorNumber: 10     # black pegs for partial matches
+    symbol: "\u25CB"    # ○ hollow circle
+
+  empty:
+    colorNumber: 10     # for ordered feedback: no match at this position
+    symbol: "\u00D7"    # × multiplication sign, also try _  ─ (\u2500)  -  x
